@@ -1,0 +1,226 @@
+---
+title: "tidytuesday_2021_week4"
+author: "Margaux Sleckman"
+date: "1/23/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+```
+
+```{r packages and settings}
+
+#install.packages(c("sf", "rgdal"))
+library(skimr)
+library(janitor)
+library(tidymodels)
+library(tidyverse)
+library(sf)
+library(rgdal)
+library(janitor)
+library(stringr)
+library(tidytuesdayR)
+library(gridExtra)
+library(RColorBrewer)
+
+devtools::install_github("ciannabp/inauguration")
+library(inauguration)
+
+ggplot2::theme_set(theme_light())
+
+```
+
+
+```{r}
+tt <- tt_load(week = 4, "2021")
+```
+
+```{r skim}
+
+print(skim(tt$gender))
+      
+print(skim(tt$households))
+
+print(skim(tt$crops))
+
+```
+
+### 1. Cleaning 
+
+## a. Gender
+
+```{r eval = FALSE}
+
+gender <- tt$gender %>% 
+  clean_names() %>% 
+  mutate(gender = str_trim(county))
+
+unique(gender$county)
+
+
+```
+
+## b. Households
+
+```{r }
+
+colnames(tt$households)
+
+households <- tt$households %>% 
+  clean_names() %>% 
+  mutate(county = str_trim(county))
+
+print(unique(households$average_household_size))
+
+head(households)
+
+```
+
+## c. Crops
+
+```{r }
+
+skim(tt$crops)
+print(unique(tt$crops$SubCounty))
+
+crops <- tt$crops %>% 
+  clean_names() %>% 
+  mutate(sub_county = str_trim(sub_county))
+
+```
+
+### 2. First Exploration Plots
+
+## a. Gender plots by County 
+
+```{r plot1_2_gender}
+
+p2<-gender %>% 
+  filter(county != "Total") %>% 
+  mutate(county = fct_reorder(county, total)) %>%  # reorder the counties by total 
+  ggplot(aes(total, county, fill = "red"))+
+  geom_col()+
+  scale_x_continuous(labels = comma)+ # puts commas on x axis numbers
+    labs(y = "Kenyan County", x = "Total population")+
+  theme(panel.border = element_rect(linetype = "dashed", fill = NA))
+
+p1<-gender %>% 
+  filter(county != "Total") %>% 
+  gather(gender, population, male, female, intersex) %>% 
+  mutate(gender = str_to_title(gender)) %>%  # covert the case of a string
+  mutate(county = fct_reorder(county, total, sum)) %>%  # reorder the counties(factors) by total 
+  ggplot(aes(population, county, fill = gender))+
+  geom_col()+
+  labs(y = "Kenyan County", x = "Total population")+
+  scale_x_continuous(labels = comma)+ # puts commas on x axis numbers
+  theme(panel.border = element_rect(linetype = "dashed", fill = NA))
+
+grid.arrange(p1, p2, ncol = 2)
+  
+```
+
+
+```{r plot_sexRatio_gender}
+
+require(ggrepel)
+
+gender %>%
+  filter(county != "Total")%>%
+  mutate(pct_male = male/total) %>% 
+  arrange(desc(pct_male))%>%
+  ggplot(mapping = aes(total, pct_male))+
+  geom_point()+
+    geom_text_repel(mapping = aes(label = county), vjust = 1, hjust = 1,
+                    size = 3, nudge_y = -0.001, nudge_x = -0.001)+
+    geom_hline(color = "firebrick", yintercept = 0.5, linetype = "dashed")+
+  geom_label(x=4.3e+06, y= 0.502, label = "50% mark",
+             color = "firebrick", fill= "white")+
+  scale_y_continuous(labels = percent)+
+  labs(title = "Distribution of Kenyan Counties by percent by sex ratio",
+        x = "Total Population", y = "Percent male")+
+  scale_x_continuous(labels = comma)
+
+
+```
+
+## b. households average size by County 
+
+```{r households}
+
+households %>%
+  filter(county != "Total")%>%
+  arrange(desc(households$average_household_size))%>%
+  ggplot(mapping = aes(population, average_household_size))+
+  geom_point()+
+  geom_text_repel(mapping = aes(label = county),
+            vjust = 1,
+            hjust = 1, size = 2.5)+
+  scale_x_log10(labels = comma)+
+  ylim(0,7.3)+
+  labs(title = "Comparison of average household size to population by County in Kenya",
+       x = "Total County Population", y = "Average Household Size")
+  
+
+```
+
+## c. Crops 
+```{r stacked_barchart_crops}
+
+
+Crop_county = crops %>% 
+  ## gather() == groupby() and melt - so you have tabular format where subcounty are the duplicated   
+  gather(key = crop, value = households_totals, -sub_county, -farming)%>% 
+  ## remove na
+  filter(!is.na(households_totals)) %>% 
+  ## create new county col with norma subcounty str = upper case only on first letter of words
+  mutate(county = str_to_title(sub_county)) %>%  
+  filter(county!= "Kenya") %>%
+  # Reorder factor levels by sorting along another variable
+  mutate(county = fct_reorder(county, households_totals, sum), 
+         crop = fct_reorder(crop, households_totals, sum))
+
+Crop_county %>% 
+  ggplot(aes(y = county,
+             x = households_totals,
+             fill = crop))+
+  geom_col()+ ## Legend alphabetical by default
+  # scale_fill_discrete() %>%
+  scale_fill_brewer(palette='Paired', name = "Crop",labels = c("Avocado", "Cashew Nut","Citrus",
+                                                "Coconut", "Coffee", "Khat Miraa",
+                                                "Macademia", "Mango", "Tea"))+ 
+                      # color = display.brewer.pal(9,"BrBG")) %>% 
+  labs(title = "Number of Farmer Households by Crop farmed in Kenya County", 
+       x = "# of farmer households", 
+       y = "Kenyan County")+
+  scale_x_continuous(labels = comma)+
+  theme(axis.text.y = element_text(size = 9, lineheight = 0.8))+
+  theme_bw()
+
+       
+```
+
+
+```{r Heatmap_crops}
+
+Crop_county %>%
+  complete(crop, county, fill = list(households_totals = 0)) %>% 
+  ggplot(aes(y = county,
+             x = str_to_title(crop),
+             fill = households_totals))+
+  geom_tile()+
+  theme(axis.text.x = element_text(angle = 90, hjust = 1), 
+        axis.text.y = element_text(size = 9, lineheight = 0.8))+
+    labs(title = "Total Number of Farmer Households by Crop in Kenya County", 
+       x = "Crop", 
+       y = "Kenyan County")+
+  scale_fill_gradientn(name = "Total Number of Households", colours = inauguration("inauguration_2021",4))+
+  scale_x_discrete(labels = c("Khat_miraa" = "Khat miraa", 
+                                  "Cashew_nut" = "Cashew nut"))
+  
+```
+
+
+## 3. Joins
+
