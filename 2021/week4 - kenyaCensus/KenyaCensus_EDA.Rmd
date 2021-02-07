@@ -10,7 +10,7 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ```
 
-```{r packages and settings}
+```{r packages_and_settings, message = FALSE}
 
 #install.packages(c("sf", "rgdal"))
 library(skimr)
@@ -25,7 +25,7 @@ library(tidytuesdayR)
 library(gridExtra)
 library(RColorBrewer)
 
-devtools::install_github("ciannabp/inauguration")
+#devtools::install_github("ciannabp/inauguration")
 library(inauguration)
 
 ggplot2::theme_set(theme_light())
@@ -34,7 +34,9 @@ ggplot2::theme_set(theme_light())
 
 
 ```{r}
+
 tt <- tt_load(week = 4, "2021")
+
 ```
 
 ```{r skim}
@@ -51,7 +53,7 @@ print(skim(tt$crops))
 
 ## a. Gender
 
-```{r eval = FALSE}
+```{r }
 
 gender <- tt$gender %>% 
   clean_names() %>% 
@@ -70,7 +72,9 @@ colnames(tt$households)
 
 households <- tt$households %>% 
   clean_names() %>% 
-  mutate(county = str_trim(county))
+  ## this is so that the city with two words are not attached but spaced out appropriately
+  mutate(county = str_trim(county)) %>% 
+  mutate(county = str_replace_all(county, "([a-z])([A-Z])", "\\1 \\2")) 
 
 print(unique(households$average_household_size))
 
@@ -135,7 +139,7 @@ gender %>%
     geom_text_repel(mapping = aes(label = county), vjust = 1, hjust = 1,
                     size = 3, nudge_y = -0.001, nudge_x = -0.001)+
     geom_hline(color = "firebrick", yintercept = 0.5, linetype = "dashed")+
-  geom_label(x=4.3e+06, y= 0.502, label = "50% mark",
+  geom_label(x=4.3e+06, y= 0.51, label = "50% mark",
              color = "firebrick", fill= "white")+
   scale_y_continuous(labels = percent)+
   labs(title = "Distribution of Kenyan Counties by percent by sex ratio",
@@ -187,10 +191,10 @@ Crop_county %>%
              fill = crop))+
   geom_col()+ ## Legend alphabetical by default
   # scale_fill_discrete() %>%
-  scale_fill_brewer(palette='Paired', name = "Crop",labels = c("Avocado", "Cashew Nut","Citrus",
+  scale_fill_brewer(palette='Paired',
+                    name = "Crop",labels = c("Avocado", "Cashew Nut","Citrus",
                                                 "Coconut", "Coffee", "Khat Miraa",
-                                                "Macademia", "Mango", "Tea"))+ 
-                      # color = display.brewer.pal(9,"BrBG")) %>% 
+                                                "Macademia", "Mango", "Tea"))+
   labs(title = "Number of Farmer Households by Crop farmed in Kenya County", 
        x = "# of farmer households", 
        y = "Kenyan County")+
@@ -213,6 +217,7 @@ Crop_county %>%
   theme(axis.text.x = element_text(angle = 90, hjust = 1), 
         axis.text.y = element_text(size = 9, lineheight = 0.8))+
     labs(title = "Total Number of Farmer Households by Crop in Kenya County", 
+         caption = expression(~italic("* Used the inauguration palette here =)")),
        x = "Crop", 
        y = "Kenyan County")+
   scale_fill_gradientn(name = "Total Number of Households", colours = inauguration("inauguration_2021",4))+
@@ -223,4 +228,93 @@ Crop_county %>%
 
 
 ## 3. Joins
+
+```{r }
+
+Crop_county <- Crop_county %>% 
+mutate(county = as.character(county)) %>% 
+full_join(households, by = "county") 
+
+# %>% view()
+
+## in this full join, we notice that the county names are separate. In households df, certain counties are unable to match because the counties are written differently. THose will be left out. 
+
+Crop_county %>% 
+  mutate(county = as.character(county)) %>%
+  inner_join(households, by = "county") %>%
+  mutate(pct_hh =  households_totals / number_of_households) %>% 
+  arrange(desc(pct_hh)) %>% 
+  # filter(crop == "coconut") %>% ## if you want to have a graph of a specific crop
+  ggplot(aes(number_of_households, pct_hh))+
+  geom_point()+
+  geom_text(aes(label = county), hjust =-0.1, vjust =-0.3, check_overlap = T, size=2)+
+  scale_y_continuous(labels = percent)+
+  labs(y = "% of households growing per crop", 
+       x = " number of households")+
+  facet_wrap(~ as.character(crop))+
+  theme_bw()+
+  theme(strip.background = element_rect(fill = "#574f4e"), strip.text = element_text(colour = "white"))
+  
+```
+
+```{r adding_more_data}
+## GIS DATA 
+install.packages("remotes")
+
+library(remotes)
+remotes::install_github("Shelmith-Kariuki/rKenyaCensus")
+library(rKenyaCensus)
+
+# install.packages("sf")
+library(sf)
+
+library(ggthemes)
+```
+
+
+```{r adding_more_data}
+
+data("DataCatalogue")
+
+```
+
+```{r look_at_shp}
+
+
+Kenya_sf <- rKenyaCensus::KenyaCounties_SHP %>% 
+  st_as_sf()%>% 
+  st_simplify(dTolerance = 10) ## makes it quicker to graph, rougher edges
+
+ggplot(Kenya_sf)+
+  geom_sf(fill = " firebrick" ,color = "grey30", alpha = 0.8)
+
+```
+```{r }
+
+
+## Join with crop df
+Kenya_sf <- Kenya_sf %>% 
+  mutate(county = str_to_title(County)) %>% 
+  left_join(Crop_county%>%
+              complete(crop,
+                       county,
+                       fill = list(number_of_households = 0)), by = "county")
+
+
+## map kenya counties by number fo households that grow avocado 
+
+ Kenya_sf %>% 
+  mutate(crop = as.character(crop)) %>%
+  filter(crop == "avocado") %>% 
+  ggplot(aes(fill = number_of_households))+ 
+  geom_sf()+
+  scale_fill_gradientn(name = "Total Number of Households", colours = rev(brewer.pal(6,"RdYlBu")))+
+  theme_map() ## NOTE: 0 values may be confounded with simply low number of hh values. Maybe set 0 values as different?
+
+    
+
+```
+
+
+
 
