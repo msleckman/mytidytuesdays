@@ -1,0 +1,106 @@
+---
+title: "tidytuesday_2021_week6"
+author: "Margaux Sleckman"
+date: "2/9/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+
+```
+
+```{r}
+
+#install.packages(c("sf", "rgdal"))
+library(skimr)
+library(janitor)
+library(tidymodels)
+library(tidyverse)
+library(sf)
+library(rgdal)
+library(janitor)
+library(stringr)
+library(tidytuesdayR)
+library(gridExtra)
+library(RColorBrewer)
+
+#devtools::install_github("ciannabp/inauguration")
+library(inauguration)
+
+ggplot2::theme_set(theme_light())
+
+```
+
+```{r}
+
+tt <- tt_load(week = 7, "2021")
+
+```
+
+```{r}
+
+View(tt$home_owner)
+
+```
+
+```{r homeownership_gaphic}
+library(skimr)
+
+skimr::skim(tt$home_owner)
+
+colnames(tt$home_owner)
+
+print(paste("Years covered:",length(unique(tt$home_owner$year)))
+print(paste("first year:", min(unique(tt$home_owner$year))))
+print(paste("last year:", max(unique(tt$home_owner$year))))
+
+homeowner <- tt$home_owner %>% 
+  ggplot()+
+  geom_line(aes(x = year,
+                y = home_owner_pct,
+                color = race), alpha = 3, size = 1)+
+  labs(title = "US Home Ownership Percentage by Race\n in last 50 years",
+       y = "Percentage", colour = "Race")+
+#  scale_y_continuous(breaks = seq(0, 1, by = 10))+
+  scale_y_continuous(labels = percent_format(1),
+                     limits = c(0.2, 0.9),
+                     breaks = seq(0, 1, by = 0.1))+
+  scale_x_continuous(breaks=seq(min(tt$home_owner$year),
+                                max(tt$home_owner$year),5))+
+  scale_colour_brewer(palette = "Reds")+
+  theme_minimal()
+
+homeowner
+
+```
+
+
+```{r }
+
+colnames(tt$retirement)
+
+glimpse(tt$retirement)
+
+skim(tt$retirement)
+
+retirement <- tt$retirement %>% 
+  ggplot()+
+  geom_line(aes(x = year,
+                y = retirement,
+                color = race), alpha = 3, size = 1)+
+  labs(title = "US retirement savings by Race\n in last 50 years",
+       y = "Percentage", colour = "Race")+
+#  scale_y_continuous(breaks = seq(0, 1, by = 10))+
+  # scale_y_continuous(labels = percent_format(1),
+  #                    limits = c(0.2, 0.9),
+  #                    breaks = seq(0, 1, by = 0.1))+
+  scale_x_continuous(breaks=seq(min(tt$retirement$year),
+                                max(tt$retirement$year),5))+
+  scale_colour_brewer(palette = "Reds")+
+  theme_minimal()
+
+retirement
+
+```
